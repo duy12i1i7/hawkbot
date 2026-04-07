@@ -151,7 +151,7 @@ hawkbot/
 │   │   │   ├── hawkbot_node.py        # Entry point → gọi HBSDK.run()
 │   │   │   ├── teleop_key.py          # Điều khiển bàn phím
 │   │   │   ├── sound.py               # Âm thanh/buzzer
-│   │   │   └── HBSDK_decompiled/
+│   │   │   └── HBSDK/
 │   │   │       └── HBSDK.py           # ⭐ SDK 
 │   │   ├── launch/
 │   │   │   ├── bringup_launch.py      # Launch HB-01S

@@ -1,24 +1,6 @@
 #!/usr/bin/env python3
 # ======================================================================
-# HBSDK.py — Reverse Engineered from HBSDK.so (Cython compiled)
-# Original source: HBSDK.py (~690 lines)
-# Compiled with: Cython 3.0.9 → HBSDK.c (22000+ lines) → HBSDK.so
-#
-# Reconstruction sources:
-#   - Python introspection (signatures, class hierarchy)
-#   - DWARF debug info (line numbers, source file refs)
-#   - Binary string extraction (6777 strings)
-#   - Symbol table (1059 symbols, 383 __pyx_ names)
-#   - Bytecode analysis (431 code objects)
-#
-# Key findings used in reconstruction:
-#   - Camera stream URL: :3982/stream
-#   - Camera API: http://%s/control?var=framesize&val=%d
-#   - UDP control ports: 29083 (src), 29084 (dst)
-#   - UDP LiDAR ports: 18902 (src), 18903 (dst)
-#   - Encryption: XOR with key=29
-#   - Default IP in strings: 192.168.100.53
-#   - Uses: findStart, isOpened, setdefaulttimeout, fdopen, MultiThreadedExecutor
+# HBSDK.py — HawkBot robot SDK bridge for ROS2
 # ======================================================================
 
 import os
