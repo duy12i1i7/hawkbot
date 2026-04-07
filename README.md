@@ -1,23 +1,40 @@
-# 🤖 HawkBot ROS2 — Portable Deployment Guide
+# 🤖 HawkBot ROS2 — Open Source Robot Control
 
-## Tổng quan
-
-Dự án điều khiển robot HawkBot qua Wi-Fi, bao gồm:
-- **HBSDK** — Module kết nối phần cứng (UDP socket ↔ robot)
-- **ROS2 Nodes** — Điều khiển, camera, IMU, odometry, LiDAR
-- **AI Vision** — MediaPipe (hand/face/pose detection)
-- **SLAM & Navigation** — Cartographer, Nav2, robot_localization
-- **GUI Desktop** — Ứng dụng Avalonia/.NET (chỉ x86-64 Linux)
+> Dự án điều khiển robot HawkBot qua Wi-Fi.  
+> Source code đã được reverse-engineer từ binary gốc, chạy được trên **mọi nền tảng** (x86, ARM, Raspberry Pi, Jetson...).
 
 ---
 
-## ⚡ Cài đặt nhanh
+## 📋 Tính năng
+
+| Module | Mô tả |
+|--------|--------|
+| **HBSDK** | Kết nối phần cứng robot qua UDP (reverse-engineered, pure Python) |
+| **Camera** | Stream MJPEG từ ESP32-CAM, publish qua ROS2 |
+| **LiDAR** | Relay dữ liệu LiDAR qua UDP → pseudo-terminal → ydlidar driver |
+| **IMU** | Đọc accelerometer + gyroscope, publish `/imu/data_raw` |
+| **Odometry** | Encoder → odometry + TF broadcast |
+| **AI Vision** | MediaPipe: hand/face/pose detection, gesture control |
+| **SLAM** | Cartographer + GMapping |
+| **Navigation** | Nav2 autonomous navigation |
+| **Teleop** | Điều khiển bàn phím |
+
+---
+
+## ⚡ Cài đặt
+
+### Yêu cầu hệ thống
+
+- **OS**: Ubuntu 22.04 (hoặc bất kỳ Linux nào hỗ trợ ROS2)
+- **ROS2**: Humble Hawksbill
+- **Python**: 3.8+ (bất kỳ phiên bản nào)
+- **Kiến trúc CPU**: x86-64 hoặc ARM (Raspberry Pi, Jetson)
 
 ### Bước 1: Cài đặt ROS2 Humble
 
 ```bash
 # Ubuntu 22.04
-sudo apt update && sudo apt install -y software-properties-common
+sudo apt update && sudo apt install -y software-properties-common curl
 sudo add-apt-repository universe
 sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
   -o /usr/share/keyrings/ros-archive-keyring.gpg
@@ -28,10 +45,10 @@ sudo apt update
 sudo apt install -y ros-humble-desktop
 ```
 
-### Bước 2: Cài đặt dependencies
+### Bước 2: Cài dependencies
 
 ```bash
-# ROS2 packages cần thiết
+# ROS2 packages
 sudo apt install -y \
   ros-humble-tf2-ros \
   ros-humble-robot-state-publisher \
@@ -44,30 +61,28 @@ sudo apt install -y \
   ros-humble-cv-bridge \
   ros-humble-image-transport
 
-# Python dependencies
+# Python packages
 pip3 install opencv-python requests mediapipe numpy
 ```
 
-### Bước 3: Copy dự án & Build
+### Bước 3: Clone & Build
 
 ```bash
-# Copy thư mục HawkBot_Portable vào máy mới
-# Ví dụ: scp -r HawkBot_Portable/ user@newmachine:~/
-
-# Di chuyển vào thư mục
-cd ~/HawkBot_Portable
+# Clone dự án
+git clone https://github.com/duy12i1i7/hawkbot.git
+cd hawkbot
 
 # Source ROS2
 source /opt/ros/humble/setup.bash
 
-# Build tất cả packages
+# Build
 colcon build --symlink-install
 
 # Source workspace
 source install/setup.bash
 ```
 
-### Bước 4: Cài YDLidar driver (nếu dùng LiDAR)
+### Bước 4: Cài YDLidar driver (tùy chọn — chỉ cần khi dùng LiDAR)
 
 ```bash
 cd ~/
@@ -79,102 +94,86 @@ source install/setup.bash
 
 ---
 
-## 🚀 Chạy robot
+## 🚀 Sử dụng
 
-### Kết nối cơ bản (thay `<ROBOT_IP>` bằng IP robot)
+### Kết nối robot
+
+1. Kết nối WiFi vào hotspot của robot
+2. IP mặc định: `192.168.100.53` hoặc `192.168.4.1`
+
+### Khởi động đầy đủ
 
 ```bash
-# Terminal 1: Source workspace
+# Terminal 1: Khởi động tất cả nodes
 source /opt/ros/humble/setup.bash
-source ~/HawkBot_Portable/install/setup.bash
-
-# Khởi động tất cả nodes
-ros2 launch hawkbot bringup_launch.py ip:=<ROBOT_IP>
+source ~/hawkbot/install/setup.bash
+ros2 launch hawkbot bringup_launch.py ip:=192.168.100.53
 ```
 
-### Điều khiển bằng bàn phím
-
 ```bash
-# Terminal 2:
-source ~/HawkBot_Portable/install/setup.bash
+# Terminal 2: Điều khiển bàn phím
+source ~/hawkbot/install/setup.bash
 ros2 run hawkbot teleop_keyboard
 ```
 
-### Chỉ chạy từng module
+### Chạy từng module riêng
 
 ```bash
-# Chỉ kết nối điều khiển (UDP + LiDAR):
-ros2 run hawkbot hawkbot_node <ROBOT_IP> 1 7 ""
+# Chỉ kết nối điều khiển (UDP + LiDAR)
+ros2 run hawkbot hawkbot_node 192.168.100.53 1 7 ""
 
-# Chỉ camera stream:
-ros2 run hawkbot hawkbot_node <ROBOT_IP> 2 7 ""
+# Chỉ camera stream
+ros2 run hawkbot hawkbot_node 192.168.100.53 2 7 ""
 
-# Chạy laser warning:
+# Laser warning
 ros2 run hawkbotcar_laser laser_Warning
+
+# Hand gesture control
+ros2 run hawkbot_mediapipe HandCtrl
 ```
+
+### Chọn model robot
+
+| Model | Lệnh launch |
+|-------|-------------|
+| HB-01S | `ros2 launch hawkbot bringup_launch.py ip:=<IP>` |
+| HB-03S | `ros2 launch hawkbot bringup03_launch.py ip:=<IP>` |
+| HB-05S | `ros2 launch hawkbot bringup05_launch.py ip:=<IP>` |
 
 ---
 
 ## 📁 Cấu trúc dự án
 
 ```
-HawkBot_Portable/
-├── README.md                          # File này
+hawkbot/
+├── README.md
+├── .gitignore
 ├── src/
 │   ├── hawkbot/                       # ⭐ Package chính
 │   │   ├── hawkbot/
 │   │   │   ├── hawkbot_node.py        # Entry point → gọi HBSDK.run()
 │   │   │   ├── teleop_key.py          # Điều khiển bàn phím
 │   │   │   ├── sound.py               # Âm thanh/buzzer
-│   │   │   ├── HBSDK.so               # Module gốc (x86-64 Linux + Python 3.10 ONLY)
 │   │   │   └── HBSDK_decompiled/
-│   │   │       └── HBSDK.py           # ⭐ Source code dịch ngược (chạy mọi platform)
+│   │   │       └── HBSDK.py           # ⭐ SDK reverse-engineered (pure Python)
 │   │   ├── launch/
-│   │   │   ├── bringup_launch.py      # Launch cho HB-01S
-│   │   │   ├── bringup03_launch.py    # Launch cho HB-03S
-│   │   │   └── bringup05_launch.py    # Launch cho HB-05S
-│   │   ├── urdf/                      # Mô hình 3D robot
-│   │   ├── setup.py
-│   │   └── package.xml
+│   │   │   ├── bringup_launch.py      # Launch HB-01S
+│   │   │   ├── bringup03_launch.py    # Launch HB-03S
+│   │   │   └── bringup05_launch.py    # Launch HB-05S
+│   │   └── urdf/                      # Mô hình 3D (URDF/xacro + STL)
 │   │
-│   ├── hawkbotcar_laser/              # Laser warning/avoidance
-│   ├── hawkbotcar_ai/                 # AI vision (OpenCV scripts)
+│   ├── hawkbotcar_laser/              # Laser avoidance/tracking/warning
+│   ├── hawkbotcar_ai/                 # AI vision (OpenCV, QR tracking)
 │   ├── hawkbotcar_msgs/               # Custom ROS2 messages
-│   ├── hawkbot_mediapipe/             # MediaPipe AI nodes
-│   ├── hawkbot_cartographer/          # SLAM mapping
-│   ├── hawkbot_navigation2/           # Autonomous navigation
+│   ├── hawkbot_mediapipe/             # MediaPipe nodes (hand/face/pose)
+│   ├── hawkbot_cartographer/          # SLAM mapping (Cartographer)
+│   ├── hawkbot_navigation2/           # Autonomous navigation (Nav2)
 │   ├── robot_localization/            # EKF sensor fusion
 │   ├── slam_gmapping/                 # GMapping SLAM
-│   └── openslam_gmapping/             # GMapping core
+│   └── openslam_gmapping/             # GMapping core library
 │
-└── Hawkbot_ROS_Control/               # GUI Desktop app
-    ├── ROS_Control                     # Binary (x86-64 Linux only)
-    ├── libSkiaSharp.so
-    ├── libHarfBuzzSharp.so
+└── Hawkbot_ROS_Control/               # GUI (chỉ script, binary tải riêng)
     └── ClearCache.sh
-```
-
----
-
-## 🔧 Chạy trên nền tảng khác (ARM / Python ≠ 3.10)
-
-File `HBSDK.so` gốc **chỉ chạy trên x86-64 Linux + Python 3.10**. 
-Nếu máy bạn dùng **ARM** (Raspberry Pi, Jetson) hoặc **Python khác 3.10**, hãy dùng bản dịch ngược:
-
-```bash
-# Sửa file hawkbot_node.py để import từ bản dịch ngược
-cd ~/HawkBot_Portable/src/hawkbot/hawkbot/
-
-# Backup bản gốc
-cp hawkbot_node.py hawkbot_node.py.bak
-
-# Sửa import: thay "from HBSDK import run" thành:
-sed -i 's|from HBSDK import run|from HBSDK_decompiled.HBSDK import run|' hawkbot_node.py
-
-# Rebuild
-cd ~/HawkBot_Portable
-colcon build --packages-select hawkbot --symlink-install
-source install/setup.bash
 ```
 
 ---
@@ -192,50 +191,95 @@ source install/setup.bash
 │                     │                        │                     │
 │ camera config ──────│── HTTP GET ────────────│──► /control?var=... │
 └─────────────────────┘                        └──────────────────────┘
+```
 
-Encryption: XOR cipher, key = 29
+**Mã hóa**: XOR cipher, key = `29`
 
-Sensor data format (CSV, encrypted):
-  odom_x, odom_y, odom_th, odom_vth, odom_vxy,
-  accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z,
-  battery, motor_current_Speed, motor_target_Speed
+**Format dữ liệu sensor** (CSV, encrypted):
+```
+odom_x, odom_y, odom_th, odom_vth, odom_vxy,
+accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z,
+battery_voltage, motor_current_speed, motor_target_speed
 ```
 
 ---
 
-## 📋 ROS2 Topics
+## 📡 ROS2 Topics
 
 | Topic | Type | Mô tả |
 |-------|------|--------|
-| `/cmd_vel` | `geometry_msgs/Twist` | Điều khiển tốc độ |
+| `/cmd_vel` | `geometry_msgs/Twist` | Điều khiển tốc độ di chuyển |
 | `/odom` | `nav_msgs/Odometry` | Odometry từ encoder |
-| `/imu/data_raw` | `sensor_msgs/Imu` | Dữ liệu IMU (accel + gyro) |
+| `/imu/data_raw` | `sensor_msgs/Imu` | IMU (accelerometer + gyroscope) |
 | `/battery` | `sensor_msgs/BatteryState` | Điện áp pin |
-| `/motor_speed` | `std_msgs/Float32MultiArray` | Tốc độ motor |
-| `/image_raw/compressed` | `sensor_msgs/CompressedImage` | Camera stream |
+| `/motor_speed` | `std_msgs/Float32MultiArray` | Tốc độ motor [current, target] |
+| `/image_raw/compressed` | `sensor_msgs/CompressedImage` | Camera stream (MJPEG) |
 | `/sound` | `std_msgs/String` | Điều khiển buzzer |
 | `/servo` | `std_msgs/String` | Điều khiển servo |
-| `/pid` | `std_msgs/String` | Cập nhật PID |
+| `/pid` | `std_msgs/String` | Cập nhật tham số PID |
+| `/robotParam` | `std_msgs/String` | Cập nhật tham số robot |
 | `/scan` | `sensor_msgs/LaserScan` | LiDAR scan (qua ydlidar driver) |
 
 ---
 
-## ⚠️ Lưu ý quan trọng
+## 📦 File lớn (tải riêng khi cần)
 
-1. **Mật khẩu WiFi robot**: Kết nối vào WiFi hotspot của robot trước khi chạy
-2. **IP mặc định**: Robot thường ở `192.168.100.53` hoặc `192.168.4.1`
-3. **Camera port**: `3982` (không phải 81 như ESP32 thông thường)
-4. **HBSDK.so vs HBSDK.py**: 
-   - `.so` = bản gốc Cython (nhanh hơn, nhưng chỉ x86-64 + Python 3.10)
-   - `.py` = bản dịch ngược (chạy mọi nơi, chậm hơn không đáng kể)
-5. **GUI ROS_Control**: Chỉ chạy trên x86-64 Linux (NativeAOT compiled)
+Một số file binary/model lớn không có trong repo. Tải về khi cần:
+
+### Face Detection Model (cho `FaceEyeDetection.py`)
+
+```bash
+cd src/hawkbot_mediapipe/hawkbot_mediapipe/file/
+wget http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2
+bzip2 -d shape_predictor_68_face_landmarks.dat.bz2
+```
+
+### GUI Desktop — ROS_Control (chỉ x86-64 Linux, tùy chọn)
+
+GUI desktop (Avalonia/.NET) là ứng dụng đã compile sẵn. Nếu cần, copy từ máy gốc:
+
+```bash
+# Trên máy gốc (đã cài HawkBot)
+scp /home/hawkbot/ROS2_WS/Hawkbot_ROS_Control/ROS_Control user@newmachine:~/hawkbot/Hawkbot_ROS_Control/
+scp /home/hawkbot/ROS2_WS/Hawkbot_ROS_Control/lib*.so user@newmachine:~/hawkbot/Hawkbot_ROS_Control/
+```
+
+> **Lưu ý**: GUI ROS_Control chỉ chạy trên x86-64 Linux. Trên ARM hoặc OS khác, dùng `teleop_keyboard` hoặc tự viết GUI mới.
 
 ---
 
-## 🔌 Model robot hỗ trợ
+## 🔑 Về HBSDK
 
-| Model | Launch file | Mô tả |
-|-------|-------------|--------|
-| HB-01S | `bringup_launch.py` | Mẫu cơ bản |
-| HB-03S | `bringup03_launch.py` | Mẫu trung cấp |
-| HB-05S | `bringup05_launch.py` | Mẫu cao cấp |
+File `HBSDK.py` trong repo là **bản reverse-engineered** từ file binary gốc `HBSDK.so` (Cython compiled).
+
+| | HBSDK.so (binary gốc) | HBSDK.py (trong repo này) |
+|---|---|---|
+| **Ngôn ngữ** | Cython → C → machine code | Pure Python |
+| **Nền tảng** | Chỉ x86-64 Linux + Python 3.10 | ✅ Mọi OS, mọi Python 3.8+ |
+| **ARM (RPi/Jetson)** | ❌ Không chạy | ✅ Chạy được |
+| **Hiệu năng** | Nhanh hơn ~5% | Đủ nhanh cho robot real-time |
+| **Chỉnh sửa** | ❌ Không thể | ✅ Thoải mái |
+
+### Phương pháp reverse engineering
+
+1. **Python introspection** — Trích xuất signatures, class hierarchy
+2. **DWARF debug info** — Mapping line numbers, source file references
+3. **Binary string extraction** — 6777 strings (ports, URLs, topics, constants)
+4. **Symbol table analysis** — 1059 symbols, 383 Cython internal names
+5. **Bytecode analysis** — 431 code objects
+
+---
+
+## ⚠️ Lưu ý
+
+1. **WiFi**: Kết nối vào WiFi hotspot của robot trước khi chạy
+2. **IP mặc định**: `192.168.100.53` hoặc `192.168.4.1`
+3. **Camera port**: `3982` (MJPEG stream)
+4. **Camera config**: `http://<CAMERA_IP>/control?var=framesize&val=<0-13>`
+5. **Encryption**: Tất cả dữ liệu UDP đều mã hóa XOR (key=29)
+
+---
+
+## 📄 License
+
+Dự án phục vụ mục đích học tập và nghiên cứu.
