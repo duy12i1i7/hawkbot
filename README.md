@@ -1,8 +1,6 @@
 # 🤖 HawkBot ROS2 — Open Source Robot Control
 
 > Dự án điều khiển robot HawkBot qua Wi-Fi.  
-> Source code đã được reverse-engineer từ binary gốc, chạy được trên **mọi nền tảng** (x86, ARM, Raspberry Pi, Jetson...).
-
 ---
 
 ## 📋 Tính năng
