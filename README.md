@@ -121,7 +121,9 @@ graph TD
 Run the bundled install script to set up everything automatically:
 
 ```bash
-cd ~/ROS2_WS/src
+git clone https://github.com/duy12i1i7/hawkbot.git
+
+cd hawkbot
 chmod +x install.sh
 ./install.sh
 ```
@@ -196,7 +198,7 @@ cd ~/ROS2_WS/src
 
 # Clone the project (replace with your actual repository URL)
 
-https://github.com/duy12i1i7/hawkbot.git
+git clone https://github.com/duy12i1i7/hawkbot.git
 
 # Clone additional dependencies that are not in apt
 # ydlidar_ros2_driver
