@@ -196,7 +196,24 @@ clone_source_deps() {
     fi
 }
 
-# ── 6. Set up LiDAR permissions ─────────────────────────────────────────────
+# ── 6. Download model files ──────────────────────────────────────────────────
+download_models() {
+    info "Checking model files..."
+
+    local dat_file="$SRC_DIR/hawkbot_mediapipe/hawkbot_mediapipe/file/shape_predictor_68_face_landmarks.dat"
+    if [[ -f "$dat_file" ]]; then
+        ok "Face detection model already exists"
+    else
+        info "Downloading face detection model (shape_predictor_68_face_landmarks.dat ~96 MB)..."
+        mkdir -p "$(dirname "$dat_file")"
+        wget -q --show-progress -O "${dat_file}.bz2" \
+            http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2
+        bzip2 -d "${dat_file}.bz2"
+        ok "Face detection model downloaded"
+    fi
+}
+
+# ── 7. Set up LiDAR permissions ─────────────────────────────────────────────
 setup_lidar_permissions() {
     info "Setting up LiDAR USB permissions..."
 
@@ -222,7 +239,7 @@ setup_lidar_permissions() {
     fi
 }
 
-# ── 7. Build the workspace ──────────────────────────────────────────────────
+# ── 8. Build the workspace ──────────────────────────────────────────────────
 build_workspace() {
     if [[ "$SKIP_BUILD" == true ]]; then
         warn "Skipping build (--skip-build)"
@@ -264,7 +281,7 @@ build_workspace() {
     ok "Workspace built successfully"
 }
 
-# ── 8. Set up shell environment ──────────────────────────────────────────────
+# ── 9. Set up shell environment ──────────────────────────────────────────────
 setup_shell() {
     local bashrc="$HOME/.bashrc"
     local ros_source="source /opt/ros/humble/setup.bash"
@@ -296,6 +313,7 @@ main() {
     install_pip_deps
     install_ydlidar_sdk
     clone_source_deps
+    download_models
     setup_lidar_permissions
     build_workspace
     setup_shell

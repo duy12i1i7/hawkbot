@@ -377,6 +377,16 @@ The default map is located at `hawkbot/map/hawkbot.yaml`.
 
 ### Computer Vision
 
+**First-time setup:** Download the face detection model (~96 MB, excluded from git):
+
+```bash
+cd src/hawkbot_mediapipe/hawkbot_mediapipe/file/
+wget http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2
+bzip2 -d shape_predictor_68_face_landmarks.dat.bz2
+```
+
+> **Note:** The `install.sh` script handles this automatically.
+
 MediaPipe-based vision nodes (require camera stream from bringup):
 
 ```bash
