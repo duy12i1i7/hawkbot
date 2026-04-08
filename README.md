@@ -195,7 +195,8 @@ mkdir -p ~/ROS2_WS/src
 cd ~/ROS2_WS/src
 
 # Clone the project (replace with your actual repository URL)
-# git clone <YOUR_REPO_URL> .
+
+https://github.com/duy12i1i7/hawkbot.git
 
 # Clone additional dependencies that are not in apt
 # ydlidar_ros2_driver
