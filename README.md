@@ -1,256 +1,537 @@
-# 🤖 HawkBot ROS2 — Open Source Robot Control
+# HawkBot ROS2 Project
 
-> Dự án điều khiển robot HawkBot qua Wi-Fi.  
+A ROS2 Humble-based robotics project for the HawkBot differential-drive robot, featuring SLAM, autonomous navigation, computer vision (MediaPipe), and teleoperation capabilities.
+
+## Table of Contents
+
+- [System Requirements](#system-requirements)
+- [Architecture Overview](#architecture-overview)
+- [Installation](#installation)
+  - [1. Install ROS2 Humble](#1-install-ros2-humble)
+  - [2. Install System Dependencies](#2-install-system-dependencies)
+  - [3. Install YDLidar SDK](#3-install-ydlidar-sdk)
+  - [4. Clone and Build the Workspace](#4-clone-and-build-the-workspace)
+- [Package Descriptions](#package-descriptions)
+- [Robot Communication Protocol](#robot-communication-protocol)
+- [Usage](#usage)
+  - [Bringup (Start the Robot)](#bringup-start-the-robot)
+  - [Teleoperation (Keyboard Control)](#teleoperation-keyboard-control)
+  - [SLAM (Mapping)](#slam-mapping)
+  - [Autonomous Navigation](#autonomous-navigation)
+  - [Computer Vision](#computer-vision)
+  - [Laser-based Features](#laser-based-features)
+  - [Sound / Melody Playback](#sound--melody-playback)
+- [Custom Messages](#custom-messages)
+- [Frame Reference](#frame-reference)
+- [Configuration Files](#configuration-files)
+- [Troubleshooting](#troubleshooting)
+
 ---
 
-## 📋 Tính năng
+## System Requirements
 
-| Module | Mô tả |
-|--------|--------|
-| **HBSDK** | Kết nối phần cứng robot qua UDP  |
-| **Camera** | Stream MJPEG từ ESP32-CAM, publish qua ROS2 |
-| **LiDAR** | Relay dữ liệu LiDAR qua UDP → pseudo-terminal → ydlidar driver |
-| **IMU** | Đọc accelerometer + gyroscope, publish `/imu/data_raw` |
-| **Odometry** | Encoder → odometry + TF broadcast |
-| **AI Vision** | MediaPipe: hand/face/pose detection, gesture control |
-| **SLAM** | Cartographer + GMapping |
-| **Navigation** | Nav2 autonomous navigation |
-| **Teleop** | Điều khiển bàn phím |
+| Component       | Requirement                        |
+|-----------------|------------------------------------|
+| OS              | Ubuntu 22.04 LTS (Jammy Jellyfish) |
+| ROS2            | Humble Hawksbill                   |
+| Python          | 3.10+                              |
+| CMake           | 3.22+                              |
+| RAM             | 4 GB minimum (8 GB recommended)    |
+| Robot Hardware  | HawkBot with WiFi, LiDAR, IMU, Camera |
 
 ---
 
-## ⚡ Cài đặt
+## Architecture Overview
 
-### Yêu cầu hệ thống
+```mermaid
+graph TD
+    subgraph Robot["🤖 HawkBot Robot (192.168.x.x)"]
+        HW_Motors["Motors"]
+        HW_IMU["IMU"]
+        HW_Camera["Camera"]
+        HW_LiDAR["LiDAR"]
+        HW_Battery["Battery"]
+    end
 
-- **OS**: Ubuntu 22.04 (hoặc bất kỳ Linux nào hỗ trợ ROS2)
-- **ROS2**: Humble Hawksbill
-- **Python**: 3.8+ (bất kỳ phiên bản nào)
-- **Kiến trúc CPU**: x86-64 hoặc ARM (Raspberry Pi, Jetson)
+    subgraph HostPC["🖥️ Host PC — ROS2 Humble"]
+        subgraph Core["Core Nodes"]
+            Node1["hawkbot_node\n(robot_node1)\ncmd_vel · odom · imu · battery"]
+            Node2["hawkbot_node\n(robot_node2)\nvideo · camera image"]
+            Lidar["ydlidar_ros2_driver\n/scan"]
+        end
 
-### Bước 1: Cài đặt ROS2 Humble
+        subgraph Fusion["Sensor Fusion"]
+            IMUFilter["imu_complementary_filter\n/imu/data"]
+            EKF["robot_localization\nEKF · /odometry/filtered"]
+        end
 
-```bash
-# Ubuntu 22.04
-sudo apt update && sudo apt install -y software-properties-common curl
-sudo add-apt-repository universe
-sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
-  -o /usr/share/keyrings/ros-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
-  http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | \
-  sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
-sudo apt update
-sudo apt install -y ros-humble-desktop
+        subgraph SLAM["SLAM"]
+            Carto["Cartographer\n/map"]
+            GMap["GMapping\n(alternative)"]
+        end
+
+        subgraph Nav["Navigation"]
+            Nav2["Navigation2\nAMCL · DWB Planner\nCostmaps"]
+        end
+
+        subgraph Vision["Computer Vision"]
+            MP["hawkbot_mediapipe\nHand · Face · Pose\nGesture · FaceMesh"]
+            AI["hawkbotcar_ai\nQR Tracker · HandCtrl"]
+        end
+
+        subgraph LaserPkg["Laser Features"]
+            Laser["hawkbotcar_laser\nAvoidance · Tracker\nWarning"]
+        end
+
+        RSP["robot_state_publisher\nURDF → TF"]
+    end
+
+    Robot -- "UDP :29083/:29084\nCaesar cipher" --> Node1
+    Robot -- "UDP / HTTP\nvideo stream" --> Node2
+    HW_LiDAR -- "USB /dev/ttyUSB0" --> Lidar
+
+    Node1 -- "/imu/data_raw" --> IMUFilter
+    IMUFilter -- "/imu/data" --> EKF
+    Node1 -- "/odom" --> EKF
+    EKF -- "/odometry/filtered\n/tf (odom→base)" --> Nav2
+    Lidar -- "/scan" --> Carto
+    Lidar -- "/scan" --> Nav2
+    Lidar -- "/scan" --> Laser
+    IMUFilter -- "/imu/data" --> Carto
+    Carto -- "/map" --> Nav2
+    Node2 -- "/image_raw" --> MP
+    Node2 -- "/image_raw" --> AI
+
+    style Robot fill:#ffe0b2,stroke:#e65100
+    style HostPC fill:#e3f2fd,stroke:#1565c0
+    style Core fill:#bbdefb,stroke:#1976d2
+    style Fusion fill:#c8e6c9,stroke:#388e3c
+    style SLAM fill:#fff9c4,stroke:#f9a825
+    style Nav fill:#f3e5f5,stroke:#7b1fa2
+    style Vision fill:#fce4ec,stroke:#c62828
+    style LaserPkg fill:#e0f7fa,stroke:#00838f
 ```
 
-### Bước 2: Cài dependencies
+---
+
+## Installation
+
+### Quick Install (All-in-One)
+
+Run the bundled install script to set up everything automatically:
 
 ```bash
-# ROS2 packages
+cd ~/ROS2_WS/src
+chmod +x install.sh
+./install.sh
+```
+
+Options:
+- `--skip-ros2` — Skip ROS2 Humble installation if already present
+- `--skip-build` — Skip the colcon build step
+- `--jobs N` — Limit parallel make jobs (use `--jobs 1` for low-RAM systems)
+
+The script will automatically detect low RAM (<6 GB) and reduce build parallelism.
+
+---
+
+### Manual Installation (Step by Step)
+
+### 1. Install ROS2 Humble
+
+Follow the official guide: https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html
+
+
+### 2. Install System Dependencies
+
+```bash
+# Core ROS2 packages
 sudo apt install -y \
-  ros-humble-tf2-ros \
-  ros-humble-robot-state-publisher \
-  ros-humble-imu-complementary-filter \
-  ros-humble-robot-localization \
-  ros-humble-navigation2 \
-  ros-humble-nav2-bringup \
   ros-humble-cartographer \
   ros-humble-cartographer-ros \
-  ros-humble-cv-bridge \
-  ros-humble-image-transport
+  ros-humble-navigation2 \
+  ros-humble-nav2-bringup \
+  ros-humble-robot-state-publisher \
+  ros-humble-joint-state-publisher \
+  ros-humble-xacro \
+  ros-humble-tf2-ros \
+  ros-humble-tf2-tools
 
-# Python packages
-pip3 install opencv-python requests mediapipe numpy
+# Build tools
+sudo apt install -y \
+  python3-colcon-common-extensions \
+  python3-rosdep \
+  python3-vcstool \
+  cmake \
+  build-essential
+
+# Python dependencies
+pip3 install opencv-python mediapipe numpy
+
+# Initialize rosdep (if not done already)
+sudo rosdep init 2>/dev/null || true
+rosdep update
 ```
 
-### Bước 3: Clone & Build
+### 3. Install YDLidar SDK
+
+The YDLidar SDK must be installed system-wide before building the ROS2 driver.
 
 ```bash
-# Clone dự án
-git clone https://github.com/duy12i1i7/hawkbot.git
-cd hawkbot
-
-# Source ROS2
-source /opt/ros/humble/setup.bash
-
-# Build
-colcon build --symlink-install
-
-# Source workspace
-source install/setup.bash
-```
-
-### Bước 4: Cài YDLidar driver (tùy chọn — chỉ cần khi dùng LiDAR)
-
-```bash
-cd ~/
+cd /tmp
 git clone https://github.com/YDLIDAR/YDLidar-SDK.git
 cd YDLidar-SDK
-mkdir build
-cd build
+mkdir build && cd build
 cmake ..
-make
+make -j$(nproc)
 sudo make install
-cd ~/
-git clone -b humble https://github.com/YDLIDAR/ydlidar_ros2_driver.git ydlidar_ros2_ws/src/ydlidar_ros2_driver
-cd ydlidar_ros2_driver
+```
+
+### 4. Clone and Build the Workspace
+
+```bash
+# Create workspace
+mkdir -p ~/ROS2_WS/src
+cd ~/ROS2_WS/src
+
+# Clone the project (replace with your actual repository URL)
+# git clone <YOUR_REPO_URL> .
+
+# Clone additional dependencies that are not in apt
+# ydlidar_ros2_driver
+git clone -b humble https://github.com/YDLIDAR/ydlidar_ros2_driver.git
+
+# imu_tools (provides imu_complementary_filter)
+git clone -b humble https://github.com/CCNYRoboticsLab/imu_tools.git
+
+# Build the workspace
+cd ~/ROS2_WS
+source /opt/ros/humble/setup.bash
 colcon build --symlink-install
-source install/setup.bash
+
+# Source the workspace
+echo "source ~/ROS2_WS/install/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+```
+
+> **Note:** If you encounter OOM (Out of Memory) errors during C++ compilation (e.g., `robot_localization`), limit parallelism:
+> ```bash
+> MAKEFLAGS="-j1" colcon build --symlink-install --parallel-workers 1
+> ```
+
+### 5. Set Up LiDAR USB Permissions
+
+```bash
+# Add your user to the dialout group for serial port access
+sudo usermod -a -G dialout $USER
+
+# Create a udev rule for the YDLidar (optional, for persistent device name)
+echo 'KERNEL=="ttyUSB*", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", MODE:="0666", GROUP:="dialout", SYMLINK+="ydlidar"' \
+  | sudo tee /etc/udev/rules.d/ydlidar.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+# Log out and back in for the group change to take effect
 ```
 
 ---
 
-## 🚀 Sử dụng
+## Package Descriptions
 
-### Kết nối robot
+| Package                | Type          | Description |
+|------------------------|---------------|-------------|
+| `hawkbot`              | ament_python  | Core robot node — motor control, odometry, IMU, battery, video via UDP protocol. Includes teleoperation and sound playback. |
+| `hawkbot_cartographer` | ament_cmake   | SLAM configuration using Google Cartographer with LiDAR + IMU fusion. |
+| `hawkbot_navigation2`  | ament_cmake   | Autonomous navigation using Nav2 stack (AMCL, DWB planner, costmaps). |
+| `hawkbot_mediapipe`    | ament_python  | Computer vision nodes: hand/face/pose detection, gesture recognition, face mesh, virtual paint. |
+| `hawkbotcar_ai`        | ament_python  | AI features: QR code tracking, hand gesture-based car control. |
+| `hawkbotcar_laser`     | ament_python  | Laser-based obstacle avoidance, object tracking, and proximity warning. |
+| `hawkbotcar_msgs`      | ament_cmake   | Custom ROS2 message definitions (ImageMsg, Position, Target, PointArray, TargetArray). |
+| `ydlidar_ros2_driver`  | ament_cmake   | ROS2 driver for YDLidar 2D LiDAR sensors. |
+| `imu_tools`            | ament_cmake   | IMU complementary filter and Madgwick filter for sensor fusion. |
+| `robot_localization`   | ament_cmake   | Extended Kalman Filter (EKF) for fusing odometry + IMU into a smooth pose estimate. |
+| `slam_gmapping`        | ament_cmake   | Alternative SLAM using GMapping (particle filter-based). |
+| `openslam_gmapping`    | ament_cmake   | Core GMapping library used by slam_gmapping. |
 
-1. Kết nối WiFi vào chung hotspot chung robot
+---
 
-### Khởi động đầy đủ
+## Robot Communication Protocol
+
+The HawkBot communicates with the host PC over **WiFi using UDP** with a simple encrypted protocol.
+
+| Parameter          | Value  |
+|--------------------|--------|
+| Control send port  | 29083  |
+| Control recv port  | 29084  |
+| LiDAR send port    | 18902  |
+| LiDAR recv port    | 18903  |
+| Encryption         | Caesar cipher (shift = 29) |
+| Message format     | `#<SIGNAL><data>*` |
+
+**Signal Codes:**
+
+| Signal | Direction | Description |
+|--------|-----------|-------------|
+| `A`    | PC → Robot | Motor velocity command (cmd_vel) |
+| `B`    | Both       | Odometry data / Sound command |
+| `D`    | Both       | IMU data / PID parameters |
+| `E`    | Both       | Battery state / Servo control |
+| `G`    | Both       | Motor speed / Robot parameters |
+
+---
+
+## Usage
+
+### Bringup (Start the Robot)
+
+Connect to the same WiFi network as the robot, then launch:
 
 ```bash
-# Terminal 1: Khởi động tất cả nodes
-source /opt/ros/humble/setup.bash
-source ~/hawkbot/install/setup.bash
-ros2 launch hawkbot bringup_launch.py ip:=<IP_robot>
+# Standard bringup (replace IP with your robot's IP)
+ros2 launch hawkbot bringup_launch.py ip:=192.168.0.132
+
+# With custom camera quality (1-10, default: 7)
+ros2 launch hawkbot bringup_launch.py ip:=192.168.0.132 cam_quality:=5
+
+# Robot variant 03
+ros2 launch hawkbot bringup03_launch.py ip:=192.168.0.132
+
+# Robot variant 05
+ros2 launch hawkbot bringup05_launch.py ip:=192.168.0.132
 ```
 
+This starts:
+- Two `hawkbot_node` processes (control + video)
+- YDLidar driver on `/dev/ttyUSB0`
+- IMU complementary filter
+- Robot localization (EKF)
+- Robot state publisher (URDF → TF)
+- All necessary static transforms
+
+### Teleoperation (Keyboard Control)
+
+In a **separate terminal** (after bringup):
+
 ```bash
-# Terminal 2: Điều khiển bàn phím
-source ~/hawkbot/install/setup.bash
 ros2 run hawkbot teleop_keyboard
 ```
 
-### Chạy từng module riêng
+**Keyboard bindings:**
+
+```
+   u    i    o
+   j    k    l
+   m    ,    .
+
+i/k : forward / stop
+j/l : turn left / turn right
+u/o : forward-left / forward-right
+m/. : backward-left / backward-right
+
+w/x : increase / decrease linear speed (by 10%)
+e/c : increase / decrease angular speed (by 10%)
+
+CTRL+C to quit
+```
+
+Default speed: linear = 0.15 m/s, angular = 1.0 rad/s
+
+### SLAM (Mapping)
+
+First start the robot bringup, then in a separate terminal:
 
 ```bash
-# Chỉ kết nối điều khiển (UDP + LiDAR)
-ros2 run hawkbot hawkbot_node <IP_robot> 1 7 ""
+# Start Cartographer SLAM + RViz
+ros2 launch hawkbot_cartographer cartographer.launch.py
+```
 
-# Chỉ camera stream
-ros2 run hawkbot hawkbot_node <IP_robot> 2 7 ""
+Drive the robot around using teleoperation to build a map. When done, save the map:
 
-# Laser warning
+```bash
+# Save map to file
+ros2 run nav2_map_server map_saver_cli -f ~/ROS2_WS/src/hawkbot/map/my_map
+```
+
+This produces `my_map.pgm` (image) and `my_map.yaml` (metadata).
+
+### Autonomous Navigation
+
+Requires a pre-built map. First start bringup, then:
+
+```bash
+# Standard navigation
+ros2 launch hawkbot_navigation2 navigation2.launch.py
+
+# Robot variant 03
+ros2 launch hawkbot_navigation2 navigation2_03.launch.py
+
+# Robot variant 05
+ros2 launch hawkbot_navigation2 navigation2_05.launch.py
+```
+
+In RViz2:
+1. Click **"2D Pose Estimate"** to set the robot's initial position on the map
+2. Click **"Nav2 Goal"** to set a navigation goal
+
+The default map is located at `hawkbot/map/hawkbot.yaml`.
+
+### Computer Vision
+
+MediaPipe-based vision nodes (require camera stream from bringup):
+
+```bash
+# Hand detection
+ros2 run hawkbot_mediapipe HandDetector
+
+# Pose detection
+ros2 run hawkbot_mediapipe PoseDetector
+
+# Face mesh
+ros2 run hawkbot_mediapipe FaceMesh
+
+# Gesture recognition
+ros2 run hawkbot_mediapipe GestureRecognition
+
+# Hand-controlled car
+ros2 run hawkbotcar_ai HandCtrlCar
+
+# QR code tracker
+ros2 run hawkbotcar_ai qrTracker
+```
+
+### Laser-based Features
+
+```bash
+# Obstacle avoidance (auto-drive avoiding obstacles)
+ros2 run hawkbotcar_laser laser_Avoidance
+
+# Object tracking with laser
+ros2 run hawkbotcar_laser laser_Tracker
+
+# Proximity warning
 ros2 run hawkbotcar_laser laser_Warning
-
-# Hand gesture control
-ros2 run hawkbot_mediapipe HandCtrl
 ```
 
-### Chọn model robot
-
-| Model | Lệnh launch |
-|-------|-------------|
-| HB-01S | `ros2 launch hawkbot bringup_launch.py ip:=<IP>` |
-| HB-03S | `ros2 launch hawkbot bringup03_launch.py ip:=<IP>` |
-| HB-05S | `ros2 launch hawkbot bringup05_launch.py ip:=<IP>` |
-
----
-
-## 📁 Cấu trúc dự án
-
-```
-hawkbot/
-├── README.md
-├── .gitignore
-├── src/
-│   ├── hawkbot/                       # ⭐ Package chính
-│   │   ├── hawkbot/
-│   │   │   ├── hawkbot_node.py        # Entry point → gọi HBSDK.run()
-│   │   │   ├── teleop_key.py          # Điều khiển bàn phím
-│   │   │   ├── sound.py               # Âm thanh/buzzer
-│   │   │   └── HBSDK/
-│   │   │       └── HBSDK.py           # ⭐ SDK 
-│   │   ├── launch/
-│   │   │   ├── bringup_launch.py      # Launch HB-01S
-│   │   │   ├── bringup03_launch.py    # Launch HB-03S
-│   │   │   └── bringup05_launch.py    # Launch HB-05S
-│   │   └── urdf/                      # Mô hình 3D (URDF/xacro + STL)
-│   │
-│   ├── hawkbotcar_laser/              # Laser avoidance/tracking/warning
-│   ├── hawkbotcar_ai/                 # AI vision (OpenCV, QR tracking)
-│   ├── hawkbotcar_msgs/               # Custom ROS2 messages
-│   ├── hawkbot_mediapipe/             # MediaPipe nodes (hand/face/pose)
-│   ├── hawkbot_cartographer/          # SLAM mapping (Cartographer)
-│   ├── hawkbot_navigation2/           # Autonomous navigation (Nav2)
-│   ├── robot_localization/            # EKF sensor fusion
-│   ├── slam_gmapping/                 # GMapping SLAM
-│   └── openslam_gmapping/             # GMapping core library
-│
-└── Hawkbot_ROS_Control/               # GUI (chỉ script, binary tải riêng)
-    └── ClearCache.sh
-```
-
----
-
-## 🌐 Kiến trúc mạng
-
-```
-┌─────────────────────┐         WiFi          ┌──────────────────────┐
-│   PC (ROS2 nodes)   │◄──────────────────────►│   HawkBot Robot     │
-│                     │                        │                     │
-│ UDP:29083 ◄─────────│── sensor data (XOR) ──│──► UDP:29084        │
-│ UDP:29083 ──────────│── cmd_vel (XOR)  ─────│──► UDP:29084        │
-│ UDP:18902 ◄─────────│── LiDAR data ─────────│──► UDP:18903        │
-│ HTTP ◄──────────────│── camera MJPEG ───────│──► :3982/stream     │
-│                     │                        │                     │
-│ camera config ──────│── HTTP GET ────────────│──► /control?var=... │
-└─────────────────────┘                        └──────────────────────┘
-```
-
-**Mã hóa**: XOR cipher, key = `29`
-
-**Format dữ liệu sensor** (CSV, encrypted):
-```
-odom_x, odom_y, odom_th, odom_vth, odom_vxy,
-accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z,
-battery_voltage, motor_current_speed, motor_target_speed
-```
-
----
-
-## 📡 ROS2 Topics
-
-| Topic | Type | Mô tả |
-|-------|------|--------|
-| `/cmd_vel` | `geometry_msgs/Twist` | Điều khiển tốc độ di chuyển |
-| `/odom` | `nav_msgs/Odometry` | Odometry từ encoder |
-| `/imu/data_raw` | `sensor_msgs/Imu` | IMU (accelerometer + gyroscope) |
-| `/battery` | `sensor_msgs/BatteryState` | Điện áp pin |
-| `/motor_speed` | `std_msgs/Float32MultiArray` | Tốc độ motor [current, target] |
-| `/image_raw/compressed` | `sensor_msgs/CompressedImage` | Camera stream (MJPEG) |
-| `/sound` | `std_msgs/String` | Điều khiển buzzer |
-| `/servo` | `std_msgs/String` | Điều khiển servo |
-| `/pid` | `std_msgs/String` | Cập nhật tham số PID |
-| `/robotParam` | `std_msgs/String` | Cập nhật tham số robot |
-| `/scan` | `sensor_msgs/LaserScan` | LiDAR scan (qua ydlidar driver) |
-
----
-
-## 📦 File lớn (tải riêng khi cần)
-
-Một số file binary/model lớn không có trong repo. Tải về khi cần:
-
-### Face Detection Model (cho `FaceEyeDetection.py`)
+### Sound / Melody Playback
 
 ```bash
-cd src/hawkbot_mediapipe/hawkbot_mediapipe/file/
-wget http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2
-bzip2 -d shape_predictor_68_face_landmarks.dat.bz2
+ros2 run hawkbot sound
 ```
 
----
-
-## ⚠️ Lưu ý
-
-1. **WiFi**: Kết nối vào WiFi hotspot của robot trước khi chạy
-2. **IP mặc định**: `192.168.100.53` hoặc `192.168.4.1`
-3. **Camera port**: `3982` (MJPEG stream)
-4. **Camera config**: `http://<CAMERA_IP>/control?var=framesize&val=<0-13>`
-5. **Encryption**: Tất cả dữ liệu UDP đều mã hóa XOR (key=29)
+Plays predefined melodies (e.g., Happy Birthday, Twinkle Twinkle Little Star) through the robot's buzzer.
 
 ---
 
-## 📄 License
+## Custom Messages
 
-Dự án phục vụ mục đích học tập và nghiên cứu phát triển.
+Defined in `hawkbotcar_msgs`:
+
+| Message        | Fields | Description |
+|----------------|--------|-------------|
+| `ImageMsg`     | `int32 height, width, channels; uint8[] data` | Raw image data |
+| `Position`     | `float32 anglex, angley, distance` | Object position (angles + distance) |
+| `Target`       | `string frame_id; Time stamp; float32 scores, ptx, pty, distw, disth, centerx, centery` | Detected object with bounding box |
+| `TargetArray`  | `Target[] data` | Array of detected objects |
+| `PointArray`   | `geometry_msgs/Point[] points` | Array of 3D points |
+
+---
+
+## Frame Reference
+
+```
+map
+ └── odom_combined
+      └── base_footprint    (robot base)
+           ├── gyro_link     (IMU)
+           ├── laser_frame   (LiDAR)
+           ├── camera_link   (Camera)
+           ├── left_wheel    (Left motor)
+           └── right_wheel   (Right motor)
+```
+
+| Frame            | Description |
+|------------------|-------------|
+| `map`            | Global fixed frame (from SLAM or AMCL) |
+| `odom_combined`  | Odometry frame (from EKF fusion) |
+| `base_footprint` | Robot base frame (on the ground plane) |
+| `gyro_link`      | IMU sensor frame |
+| `laser_frame`    | LiDAR sensor frame |
+| `camera_link`    | Camera optical frame |
+
+---
+
+## Configuration Files
+
+| File | Location | Description |
+|------|----------|-------------|
+| `lidar.lua` | `hawkbot_cartographer/config/` | Cartographer SLAM parameters (tracking frame, range limits, IMU usage) |
+| `nav2_params.yaml` | `hawkbot_navigation2/config/` | Nav2 stack parameters (AMCL, DWB planner, costmaps, recovery behaviors) |
+| `nav2_params03.yaml` | `hawkbot_navigation2/config/` | Nav2 parameters for robot variant 03 |
+| `nav2_params05.yaml` | `hawkbot_navigation2/config/` | Nav2 parameters for robot variant 05 |
+| `ydlidar.yaml` | `ydlidar_ros2_driver/params/` | LiDAR driver parameters (baud rate, scan range, frequency) |
+| `hawkbot.urdf.xacro` | `hawkbot/urdf/` | Robot URDF model (standard variant) |
+| `hawkbot.yaml` | `hawkbot/map/` | Pre-built map metadata (resolution: 0.03 m/pixel) |
+
+---
+
+## Troubleshooting
+
+### Build fails with OOM (Killed signal)
+
+C++ packages like `robot_localization` consume a lot of memory during compilation. Limit parallelism:
+
+```bash
+MAKEFLAGS="-j1" colcon build --symlink-install --parallel-workers 1
+```
+
+### Build error: "existing path cannot be removed: Is a directory"
+
+Clean the problematic build artifact:
+
+```bash
+rm -rf ~/ROS2_WS/build/robot_localization/ament_cmake_python/robot_localization/robot_localization
+colcon build --symlink-install --packages-select robot_localization
+```
+
+### LiDAR not detected (`/dev/ttyUSB0` not found)
+
+1. Check physical connection: `ls /dev/ttyUSB*`
+2. Verify permissions: `sudo chmod 666 /dev/ttyUSB0`
+3. Add user to dialout group: `sudo usermod -a -G dialout $USER` (then log out/in)
+
+### Robot not responding (UDP timeout)
+
+1. Verify robot is powered on and connected to the same WiFi
+2. Ping the robot: `ping 192.168.0.132`
+3. Check UDP connectivity: `nc -u 192.168.0.132 29083`
+4. Ensure no firewall is blocking UDP ports 29083-29084 and 18902-18903
+
+### Navigation "transform timeout" errors
+
+This usually means one of the TF chains is broken. Check:
+
+```bash
+# View TF tree
+ros2 run tf2_tools view_frames
+
+# Check specific transform
+ros2 run tf2_ros tf2_echo map base_footprint
+```
+
+Ensure bringup is running before starting navigation.
+
+### Camera image not showing
+
+Verify video stream is active:
+
+```bash
+ros2 topic echo /image_raw --once
+```
+
+If empty, check the robot's camera IP and `cam_quality` parameter.
+
+---
+
+## License
+
+This project is developed for educational and research purposes with the HawkBot robot platform.

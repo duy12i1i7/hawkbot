@@ -1,21 +1,28 @@
-# Build artifacts
-build/
-install/
+# === Build artifacts (workspace root only) ===
+/build/
+/install/
+/log/
 __pycache__/
 *.pyc
 *.egg-info/
-.idea/
 
-# OS
+# === IDE ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# === OS ===
 .DS_Store
 Thumbs.db
 
-# Binary (use HBSDK.py instead)
+# === Binary / Large files ===
 *.so
-
-# Large binary files (download separately)
+*.so.bak
 *.dat
 *.bag
-Hawkbot_ROS_Control/ROS_Control
-Hawkbot_ROS_Control/libSkiaSharp.so
-Hawkbot_ROS_Control/libHarfBuzzSharp.so
+
+# === Cloned dependencies (install.sh handles these) ===
+src/ydlidar_ros2_driver/
+src/imu_tools/
