@@ -92,9 +92,6 @@ cmake ..
 make
 sudo make install
 cd ~/
-cd YDLidar-SDK
-pip install .
-cd ~/
 git clone -b humble https://github.com/YDLIDAR/ydlidar_ros2_driver.git ydlidar_ros2_ws/src/ydlidar_ros2_driver
 cd ydlidar_ros2_driver
 colcon build --symlink-install
