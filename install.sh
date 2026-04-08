@@ -70,6 +70,15 @@ info "Source dir:      $SRC_DIR"
 # ── Helper: check command exists ─────────────────────────────────────────────
 has_cmd() { command -v "$1" &>/dev/null; }
 
+# Source ROS setup with nounset disabled to avoid unbound var issues
+# from upstream setup scripts when this installer runs with `set -u`.
+source_ros_setup() {
+    set +u
+    # shellcheck disable=SC1091
+    source /opt/ros/humble/setup.bash
+    set -u
+}
+
 # ── 1. Install ROS2 Humble ──────────────────────────────────────────────────
 install_ros2() {
     if [[ "$SKIP_ROS2" == true ]]; then
@@ -105,8 +114,7 @@ install_apt_deps() {
     info "Installing apt dependencies..."
 
     # Source ROS2 for rosdep
-    # shellcheck disable=SC1091
-    source /opt/ros/humble/setup.bash
+    source_ros_setup
 
     sudo apt update
     sudo apt install -y \
@@ -249,8 +257,7 @@ build_workspace() {
     info "Building workspace at $WS_ROOT ..."
 
     cd "$WS_ROOT"
-    # shellcheck disable=SC1091
-    source /opt/ros/humble/setup.bash
+    source_ros_setup
 
     # Determine make jobs
     local make_flags=""
